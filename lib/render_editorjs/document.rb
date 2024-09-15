@@ -3,8 +3,11 @@
 module RenderEditorjs
   class Document
     include ActionView::Helpers::OutputSafetyHelper
-    
+    require 'nokogiri'
+
     attr_reader :renderer, :content, :errors
+
+    ALLOWED_PROTOCOLS = ['http', 'https', 'mailto']
 
     def initialize(content, renderer = RenderEditorjs::DefaultRenderer.new)
       @renderer = renderer
@@ -23,17 +26,45 @@ module RenderEditorjs
     def render
       return "" unless valid_renderer?
     
-      safe_join(
+      rendered_content = safe_join(
         content["blocks"].map do |block|
           block_renderer = block_renderers(block["type"])
           next unless block_renderer
-    
+
           block_renderer.render(block["data"])
         end.compact
       )
+
+      sanitize_links(rendered_content)
     end
 
     private
+
+    def sanitize_links(html_content)
+      return html_content unless html_content
+
+      fragment = Nokogiri::HTML::DocumentFragment.parse(html_content)
+
+      fragment.css('a').each do |link|
+        href = link['href']
+        next unless href
+
+        if href =~ /^\s*javascript:/i || href =~ /^\s*data:/i
+          link.remove_attribute('href')
+        else
+          begin
+            uri = URI.parse(href)
+            unless uri.scheme.nil? || ALLOWED_PROTOCOLS.include?(uri.scheme)
+              link.remove_attribute('href')
+            end
+          rescue URI::InvalidURIError
+            link.remove_attribute('href')
+          end
+        end
+      end
+
+      safe_join(fragment.children)
+    end
 
     def valid_renderer?
       renderer.validator(content).validate!
