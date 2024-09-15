@@ -63,7 +63,7 @@ module RenderEditorjs
         end
       end
 
-      safe_join(fragment.children)
+      safe_join(fragment.children.to_a)
     end
 
     def valid_renderer?
